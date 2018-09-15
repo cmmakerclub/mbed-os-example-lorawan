@@ -25,6 +25,8 @@
 #include "trace_helper.h"
 #include "lora_radio_helper.h"
 
+#include "BME280.h"
+
 using namespace events;
 
 // Max payload size can be LORAMAC_PHY_MAXPAYLOAD.
@@ -91,16 +93,15 @@ static lorawan_app_callbacks_t callbacks;
  * Entry point for application
  */
 // device_battery_level_t
-  typedef struct __attribute((__packed__)) {
+typedef struct __attribute((__packed__)) {
     uint16_t battery;
     int32_t field1;
     int32_t field2;
     int32_t field3;
     int32_t field4;
-    char name[6];
+    char name[8];
     uint32_t ms = 0;
-    uint32_t sum = 0;
-  } CMMC_SENSOR_DATA_T;
+} CMMC_SENSOR_DATA_T;
 
 uint8_t your_battery_level()
 {
@@ -109,6 +110,9 @@ uint8_t your_battery_level()
 }
 
 
+// sda, scl
+// I2C i2c(PB_9, PB_8); // SDA, SCL
+BME280 bme280(PB_9, PB_8, 0x76);
 int main (void)
 {
     // setup tracing
@@ -123,13 +127,16 @@ int main (void)
         return -1;
     }
 
+    bme280.reset() ;
+    bme280.init() ;
+
     printf("\r\n hello world \r\n");
     printf("\r\n Mbed LoRaWANStack initialized \r\n");
-
+ 
 
     // prepare application callbacks
     callbacks.events = mbed::callback(lora_event_handler);
-    callbacks.battery_level = mbed::callback(your_battery_level);
+    // callbacks.battery_level = mbed::callback(your_battery_level);
     lorawan.add_app_callbacks(&callbacks);
 
     // Set number of retries in case of CONFIRMED messages
@@ -167,6 +174,8 @@ int main (void)
     return 0;
 }
 
+CMMC_SENSOR_DATA_T sensor;
+
 /**
  * Sends a message to the Network Server
  */
@@ -175,21 +184,26 @@ static void send_message()
     uint16_t packet_len;
     int16_t retcode;
     float sensor_value;
-    CMMC_SENSOR_DATA_T sensor;
 
     printf("size of packet = %d\r\n", sizeof(sensor));
-
-    if (ds1820.begin()) {
-        ds1820.startConversion();
-        sensor_value = ds1820.read();
-        printf("\r\n Dummy Sensor Value = %3.1f \r\n", sensor_value);
-        ds1820.startConversion();
-    } else {
-        printf("\r\n No sensor found \r\n");
-        return;
+    printf("%2.2f degC, %04.2f hPa, %2.2f %%\n", bme280.getTemperature(), bme280.getPressure(), bme280.getHumidity());
+    sensor.field1 = bme280.getTemperature()*100;
+    sensor.field2 = bme280.getHumidity()*100;
+    sensor.field3 = bme280.getPressure()*100;
+    sensor.field4 = 4;
+    sensor.battery = 0xff;
+    strcpy(sensor.name, "NAT");
+    
+    memcpy(&tx_buffer, &sensor, sizeof(sensor));
+    printf(" ");
+    for (size_t i = 0; i < sizeof(tx_buffer ); i++) {
+        printf("%02x ", tx_buffer   [i]);
     }
 
-    packet_len = sprintf((char*) tx_buffer, "%3.1f", sensor_value);
+
+    // packet_len = sprintf((char*) tx_buffer, "%3.1f", sensor_value);
+    packet_len = sizeof(sensor);
+
     retcode = lorawan.send(MBED_CONF_LORA_APP_PORT, tx_buffer, packet_len,
                            MSG_CONFIRMED_FLAG);
 
