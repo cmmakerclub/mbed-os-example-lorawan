@@ -90,6 +90,25 @@ static lorawan_app_callbacks_t callbacks;
 /**
  * Entry point for application
  */
+// device_battery_level_t
+  typedef struct __attribute((__packed__)) {
+    uint16_t battery;
+    int32_t field1;
+    int32_t field2;
+    int32_t field3;
+    int32_t field4;
+    char name[6];
+    uint32_t ms = 0;
+    uint32_t sum = 0;
+  } CMMC_SENSOR_DATA_T;
+
+uint8_t your_battery_level()
+{
+    printf("\r\n mesuring battery_level \r\n");
+    return BAT_LEVEL_FULL;
+}
+
+
 int main (void)
 {
     // setup tracing
@@ -104,10 +123,13 @@ int main (void)
         return -1;
     }
 
+    printf("\r\n hello world \r\n");
     printf("\r\n Mbed LoRaWANStack initialized \r\n");
+
 
     // prepare application callbacks
     callbacks.events = mbed::callback(lora_event_handler);
+    callbacks.battery_level = mbed::callback(your_battery_level);
     lorawan.add_app_callbacks(&callbacks);
 
     // Set number of retries in case of CONFIRMED messages
@@ -153,6 +175,9 @@ static void send_message()
     uint16_t packet_len;
     int16_t retcode;
     float sensor_value;
+    CMMC_SENSOR_DATA_T sensor;
+
+    printf("size of packet = %d\r\n", sizeof(sensor));
 
     if (ds1820.begin()) {
         ds1820.startConversion();
@@ -164,9 +189,7 @@ static void send_message()
         return;
     }
 
-    packet_len = sprintf((char*) tx_buffer, "Dummy Sensor Value is %3.1f",
-                    sensor_value);
-
+    packet_len = sprintf((char*) tx_buffer, "%3.1f", sensor_value);
     retcode = lorawan.send(MBED_CONF_LORA_APP_PORT, tx_buffer, packet_len,
                            MSG_CONFIRMED_FLAG);
 
